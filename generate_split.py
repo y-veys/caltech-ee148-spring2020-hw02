@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import json
 
 np.random.seed(2020) # to ensure you always get the same train/test split
 
@@ -38,17 +39,18 @@ np.save(os.path.join(split_path,'file_names_test.npy'),file_names_test)
 if split_test:
     with open(os.path.join(gts_path, 'annotations.json'),'r') as f:
         gts = json.load(f)
-
-    print(gts)
-    exit()
     
     # Use file_names_train and file_names_test to apply the split to the
     # annotations
+
     gts_train = {}
     gts_test = {}
-    '''
-    Your code below. 
-    '''
+
+    for gt in gts: 
+        if gt in file_names_train: 
+            gts_train[gt] = gts[gt]
+        else: 
+            gts_test[gt] = gts[gt]
     
     with open(os.path.join(gts_path, 'annotations_train.json'),'w') as f:
         json.dump(gts_train,f)

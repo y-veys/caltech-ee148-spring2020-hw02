@@ -15,9 +15,23 @@ def check_for_black(I_HSV):
 
     for i in range(n_rows):
         for j in range(n_cols):
-            if V[i,j] < 55: count += 1
+            if V[i,j] < 45: count += 1
     
     return count > 0.2*n_rows*n_cols
+
+def check_for_red(I_HSV):
+    H = I_HSV[:,:,0]
+    S = I_HSV[:,:,1]
+    V = I_HSV[:,:,2]
+
+    (n_rows,n_cols) = np.shape(H)
+    count = 0 
+
+    for i in range(n_rows):
+        for j in range(n_cols):
+            if (H[i,j] < 40 or H[i,j] > 240) and (S[i,j] > 150) and (V[i,j] > 150): count += 1
+    
+    return count > 0.05*n_rows*n_cols
 
 def mask(I_HSV):
     H = I_HSV[:,:,0]
@@ -29,7 +43,7 @@ def mask(I_HSV):
 
     for i in range(n_rows):
         for j in range(n_cols):
-            if (H[i,j] < 60 or H[i,j] > 240) and (S[i,j] > 150) and (V[i,j] > 150): 
+            if (H[i,j] < 40 or H[i,j] > 240) and (S[i,j] > 150) and (V[i,j] > 150): 
                 I_mask[i,j] = 1
             else:
                 I_mask[i,j] = 0
@@ -47,9 +61,6 @@ def compute_convolution(I, T, stride=None):
     (n_rows,n_cols,n_channels) = np.shape(I)
     heatmap = np.zeros((n_rows, n_cols))
 
-    '''
-    BEGIN YOUR CODE
-    '''
     (T_rows,T_cols,T_channels) = np.shape(T)
 
     row_pad = (T_rows-1)//2 
@@ -74,9 +85,6 @@ def compute_convolution(I, T, stride=None):
     I_pad[row_pad:n_rows+row_pad,col_pad:n_cols+col_pad,1] = I_G
     I_pad[row_pad:n_rows+row_pad,col_pad:n_cols+col_pad,2] = I_B
 
-    # I_pad = I_pad.astype(np.uint8)
-    # img = Image.fromarray(I_pad)
-    # img.show()
     (n_rows,n_cols,n_channels) = np.shape(I_pad)
 
     T = T.flatten()
@@ -92,9 +100,7 @@ def compute_convolution(I, T, stride=None):
             patch = patch/(np.sqrt(np.sum(np.square(patch))))
 
             heatmap[i,j] = np.dot(patch, T)
-    # '''
-    # END YOUR CODE
-    # '''
+ 
     return heatmap
 
 def dist(p1,p2):
@@ -106,15 +112,6 @@ def predict_boxes(heatmap, heatmap_mask, I_HSV):
     confidence scores.
     '''
     output = []
-
-    '''
-    BEGIN YOUR CODE
-    '''
-    
-    '''
-    As an example, here's code that generates between 1 and 5 random boxes
-    of fixed size and returns the results in the proper format.
-    '''
     heatmap_mask = edge_detection(heatmap_mask)
     clusters = clustering(heatmap_mask)
     
@@ -137,6 +134,7 @@ def predict_boxes(heatmap, heatmap_mask, I_HSV):
             distances.append(distance)
             centers.append(center)
 
+
     # Predict bounding boxes
     for i in range(len(filtered_clusters)):
 
@@ -147,9 +145,11 @@ def predict_boxes(heatmap, heatmap_mask, I_HSV):
         br_row = centers[i][0] + 8*avg_distance
         br_col = centers[i][1] + 2*avg_distance
 
-        if check_for_black(I_HSV[round(tl_row):round(br_row),round(tl_col):round(br_col),]):
+        HSV_patch = I_HSV[round(tl_row):round(br_row),round(tl_col):round(br_col),]
+        if check_for_black(HSV_patch) and check_for_red(HSV_patch):
             score = heatmap[round(centers[i][0]),round(centers[i][1])]
-            output.append([tl_row,tl_col,br_row,br_col, score])
+            score = (score - 0.6)/0.8 + 0.5
+            output.append([tl_row,tl_col,br_row - 6*avg_distance,br_col, score])
 
     '''
     END YOUR CODE
@@ -261,7 +261,9 @@ def detect_red_light_mf(I, I_HSV):
 
     heatmap_list = np.array(heatmap_list)
     heatmap = np.max(heatmap_list,axis=0)
+    
     (rows,cols) = np.shape(heatmap)
+    heatmap[round(4*rows/5):,:] = 0
 
     I_mask = mask(I_HSV)
 
@@ -273,10 +275,13 @@ def detect_red_light_mf(I, I_HSV):
             else:
                 heatmap_mask[i,j] = 0
 
+    # img = Image.fromarray(I_mask*255)
+    # img.show() 
+
     heatmap_mask *= 255*I_mask
     heatmap_mask = heatmap_mask.astype(np.uint8)
-    img = Image.fromarray(heatmap_mask)
-    img.show()
+    # img = Image.fromarray(heatmap_mask)
+    # img.show()
     output = predict_boxes(heatmap, heatmap_mask, I_HSV)
 
     '''
@@ -303,23 +308,25 @@ preds_path = '../data/hw02_preds'
 os.makedirs(preds_path, exist_ok=True) # create directory if needed
 
 # Set this parameter to True when you're done with algorithm development:
-done_tweaking = False
+done_tweaking = True
 
 '''
 Make predictions on the training set.
 '''
 preds_train = {}
-for i in [1]:#range(len(file_names_train)):
+print(len(file_names_train))
+for i in range(len(file_names_train)):
+    print(i+1)
 
     # read image using PIL:
     I = Image.open(os.path.join(data_path,file_names_train[i]))
-    I = Image.open('../data/RedLights2011_Medium/RL-010.jpg')
     #I.show()
 
     # convert to numpy array:
     Img = np.array(I)
     Img_HSV = I.convert("HSV")
     Img_HSV = np.array(Img_HSV)
+    I.show()
 
     bounding_boxes = detect_red_light_mf(Img, Img_HSV)
 
@@ -348,12 +355,12 @@ for i in [1]:#range(len(file_names_train)):
 
     preds_train[file_names_train[i]] = bounding_boxes
 
-    for box in bounding_boxes:
-       draw = ImageDraw.Draw(I)  
-       draw.rectangle([box[1],box[0],box[3],box[2]], fill=None, outline=None, width=1)
-    #save_name = "results_2/output_" + file_names[i] 
-    #I.save(save_name, "JPEG", quality=85)
-    I.show()
+    # for box in bounding_boxes:
+    #    draw = ImageDraw.Draw(I)  
+    #    draw.rectangle([box[1],box[0],box[3],box[2]], fill=None, outline=None, width=1)
+    # # save_name = "results_2/output_" + file_names[i] 
+    # # I.save(save_name, "JPEG", quality=85)
+    # I.show()
 
 # save preds (overwrites any previous predictions!)
 with open(os.path.join(preds_path,'preds_train.json'),'w') as f:
@@ -365,14 +372,16 @@ if done_tweaking:
     '''
     preds_test = {}
     for i in range(len(file_names_test)):
-
+        print(len(file_names_test))
+        print(i+1)
         # read image using PIL:
         I = Image.open(os.path.join(data_path,file_names_test[i]))
 
-        # convert to numpy array:
-        I = np.array(I)
+        Img = np.array(I)
+        Img_HSV = I.convert("HSV")
+        Img_HSV = np.array(Img_HSV)
 
-        preds_test[file_names_test[i]] = detect_red_light_mf(I)
+        preds_test[file_names_test[i]] = detect_red_light_mf(Img, Img_HSV)
 
     # save preds (overwrites any previous predictions!)
     with open(os.path.join(preds_path,'preds_test.json'),'w') as f:
